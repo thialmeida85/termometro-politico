@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: truthmeter-voice-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r services/voice_api/requirements.txt
+    startCommand: uvicorn services.voice-api.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: VOICEPRINTS_JSON
+        sync: false
+      - key: VOICE_THRESHOLD
+        value: "0.70"
+      - key: VOICE_MARGIN
+        value: "0.08"
+      - key: ALLOWED_ORIGINS
+        value: "*"

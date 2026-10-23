@@ -1,0 +1,13 @@
+{
+  "session": {
+    "title": "Demonstração TruthMeter",
+    "mode": "RECENTE",
+    "video": "youtube-demo"
+  },
+  "claims": [
+    {"id":"claim-1","speaker":"Lula","start":8,"end":24,"status":"CORROBORADA","score":91,"text":"A inflação acumulada no período ficou abaixo de 5%."},
+    {"id":"claim-2","speaker":"Flávio","start":31,"end":49,"status":"PARCIAL","score":58,"text":"O desemprego dobrou desde o início do ano."},
+    {"id":"claim-3","speaker":"Lula","start":55,"end":73,"status":"INDETERMINADA","score":null,"text":"Este é o maior resultado da história."},
+    {"id":"claim-4","speaker":"Flávio","start":79,"end":98,"status":"CONTRADITA","score":9,"text":"O programa alcançou 10 milhões de pessoas."}
+  ]
+}
