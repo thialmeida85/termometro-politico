@@ -102,7 +102,7 @@
 .gauge-needle { position: absolute; top: 103px; left: 76px; width: 88px; height: 4px; border-radius: 4px; background: #1680ff; box-shadow: 0 0 8px #1680ff; transform-origin: 0 50%; }
 .gauge-needle:after { content: ""; position: absolute; top: -5px; left: -7px; width: 14px; height: 14px; border-radius: 50%; background: #e9faff; box-shadow: 0 0 10px #62dbff; }
 .gauge-ticks { position: absolute; right: 15px; bottom: 1px; left: 15px; display: flex; justify-content: space-between; color: #f0f7ff; font-size: 9px; text-shadow: 0 1px 4px #000; }
-.tm-now { display: none; }
+.tm-now { display: block; max-width: 250px; margin: -2px auto 0; padding: 6px 9px; overflow: hidden; border: 1px solid rgba(148, 183, 216, .28); border-radius: 7px; background: rgba(7, 15, 27, .78); color: #d7e6f3; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 3px #000; }
 
 /* Detalhes ficam disponíveis para futura expansão, mas não poluem o HUD inicial. */
 .tm-detail, .tm-timeline { display: none; }
