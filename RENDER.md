@@ -19,7 +19,7 @@ O Free Web Service pode dormir após inatividade e não deve ser tratado como SL
 ## Teste local
 
 ```bash
-uvicorn services.voice-api.app.main:app --reload --port 8000
+uvicorn services.voice_api.app.main:app --reload --port 8000
 curl http://localhost:8000/health
 curl -F 'audio=@sample.mp3' http://localhost:8000/v1/identify
 ```
