@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+import httpx
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,8 @@ APP_VERSION = "0.1.0"
 VOICE_THRESHOLD = float(os.getenv("VOICE_THRESHOLD", "0.70"))
 VOICE_MARGIN = float(os.getenv("VOICE_MARGIN", "0.08"))
 MAX_AUDIO_BYTES = int(os.getenv("MAX_AUDIO_BYTES", str(15 * 1024 * 1024)))
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+GROQ_WEB_SEARCH = os.getenv("GROQ_WEB_SEARCH", "true").lower() == "true"
 
 app = FastAPI(title="TruthMeter Voice API", version=APP_VERSION)
 
@@ -75,6 +78,79 @@ def _cosine(left: np.ndarray, right: np.ndarray) -> float:
     return float(np.dot(left, right) / denominator) if denominator else -1.0
 
 
+def _parse_json_response(content: str) -> dict[str, Any]:
+    cleaned = content.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    parsed = json.loads(cleaned)
+    if not isinstance(parsed, dict):
+        raise ValueError("A resposta da Groq não é um objeto JSON")
+    return parsed
+
+
+async def _analyze_with_groq(caption: str) -> dict[str, Any]:
+    api_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="GROQ_API_KEY não configurada")
+
+    system = (
+        "Você é o verificador do TruthMeter. Analise uma legenda de debate político. "
+        "Extraia uma única afirmação verificável. Não invente fatos, fontes ou números. "
+        "Quando não houver evidência suficiente, use INDETERMINADA e score null. "
+        "Responda SOMENTE JSON válido com as chaves: claim, classification, score, "
+        "reason, evidence, sources, confidence. classification deve ser CORRETA, FALSA, "
+        "PARCIAL ou INDETERMINADA. score deve ser inteiro de 0 a 100 ou null. "
+        "sources deve ser uma lista de URLs realmente consultadas."
+    )
+    payload: dict[str, Any] = {
+        "model": GROQ_MODEL,
+        "temperature": 0.1,
+        "max_completion_tokens": 700,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Legenda capturada agora:\n{caption}"},
+        ],
+    }
+    if GROQ_WEB_SEARCH:
+        payload["tools"] = [{"type": "browser_search"}]
+        payload["tool_choice"] = "auto"
+
+    async with httpx.AsyncClient(timeout=45) as client:
+        response = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        )
+    if response.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Groq retornou HTTP {response.status_code}")
+
+    body = response.json()
+    content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
+    try:
+        result = _parse_json_response(content)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=502, detail="Groq retornou uma resposta fora do formato esperado") from exc
+
+    allowed = {"CORRETA", "FALSA", "PARCIAL", "INDETERMINADA"}
+    classification = result.get("classification", "INDETERMINADA")
+    if classification not in allowed:
+        classification = "INDETERMINADA"
+    score = result.get("score")
+    if not isinstance(score, int) or not 0 <= score <= 100:
+        score = None
+    sources = result.get("sources") if isinstance(result.get("sources"), list) else []
+    return {
+        "claim": str(result.get("claim") or caption),
+        "classification": classification,
+        "score": score if classification != "INDETERMINADA" else None,
+        "reason": str(result.get("reason") or "Sem justificativa suficiente."),
+        "evidence": str(result.get("evidence") or "Nenhuma evidência suficiente retornada."),
+        "sources": [str(source) for source in sources[:5]],
+        "confidence": str(result.get("confidence") or "Baixa"),
+        "model": GROQ_MODEL,
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     profiles_configured = bool(os.getenv("VOICEPRINTS_JSON", "").strip())
@@ -85,6 +161,8 @@ def health() -> dict[str, Any]:
         "profiles_loaded": len(_profiles or {}),
         "threshold": VOICE_THRESHOLD,
         "margin": VOICE_MARGIN,
+        "groq_configured": bool(os.getenv("GROQ_API_KEY", "").strip()),
+        "groq_model": GROQ_MODEL,
     }
 
 
@@ -150,3 +228,13 @@ async def identify(audio: UploadFile = File(...)) -> dict[str, Any]:
         "required_margin": VOICE_MARGIN,
         "indeterminate": not accepted,
     }
+
+
+@app.post("/v1/analyze-caption")
+async def analyze_caption(payload: dict[str, Any]) -> dict[str, Any]:
+    caption = str(payload.get("caption", "")).strip()
+    if len(caption) < 8:
+        raise HTTPException(status_code=400, detail="Legenda muito curta para análise")
+    if len(caption) > 1200:
+        caption = caption[:1200]
+    return await _analyze_with_groq(caption)

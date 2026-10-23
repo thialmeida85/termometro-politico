@@ -6,6 +6,7 @@
   let captionCounter = 0;
   let lastCaptionText = "";
   let lastCaptionAt = -1;
+  const ANALYSIS_API = "https://truthmeter-voice-api.onrender.com";
 
   const state = {
     open: true,
@@ -77,6 +78,33 @@
     if (claims.length > 100) claims.shift();
     state.selected = claim.id;
     render();
+    analyzeCaption(claim);
+  }
+
+  async function analyzeCaption(claim) {
+    try {
+      const response = await fetch(`${ANALYSIS_API}/v1/analyze-caption`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caption: claim.text })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result = await response.json();
+      if (!claims.includes(claim)) return;
+      claim.status = result.classification || "INDETERMINADA";
+      claim.score = Number.isInteger(result.score) ? result.score : null;
+      claim.text = result.claim || claim.text;
+      claim.quote = claim.text;
+      claim.evidence = result.evidence || "Nenhuma evidência suficiente retornada.";
+      claim.reason = result.reason || "Sem justificativa suficiente.";
+      claim.confidence = result.confidence || "Baixa";
+      claim.source = Array.isArray(result.sources) ? result.sources[0] || "" : "";
+      render();
+    } catch (error) {
+      claim.reason = "A análise está indisponível no momento; mantendo como não verificada.";
+      claim.confidence = "Indisponível";
+      render();
+    }
   }
 
   function render() {
@@ -98,7 +126,7 @@
         ${state.minimized ? `<div class="tm-minimized-bar"><span>${claims.length ? `${claims.length} legendas` : "Aguardando legenda"}</span><button data-action="expand">Expandir painel</button></div>` : `
         <div class="tm-body">
           <aside class="tm-speaker speaker-left"><div class="speaker-label"><span class="avatar avatar-red">?</span><span>PARTICIPANTE</span></div><div class="big-count gray">—<small>SEM ATRIBUIÇÃO</small></div><div class="small-count gray">A voz ainda não foi identificada</div></aside>
-          <main class="tm-center"><div class="tm-kicker">${state.mode} · ${claims.length} capturadas</div><div class="gauge"><div class="gauge-arc"></div><div class="gauge-ticks"><span>0</span><span>50</span><span>100</span></div><div class="gauge-value">${score === null ? "—" : score}<small>${score === null ? "SEM VERIFICAÇÃO" : "ÍNDICE"}</small></div><div class="gauge-needle" style="transform: rotate(${score === null ? -90 : -90 + score * 1.8}deg)"></div></div><div class="tm-now"><span class="pulse"></span>${active ? `Legenda capturada: ${escapeHtml(active.text.slice(0, 72))}` : "Aguardando legenda do YouTube"}</div></main>
+          <main class="tm-center"><div class="tm-kicker">${state.mode} · ${claims.length} capturadas</div><div class="gauge"><div class="gauge-arc"></div><div class="gauge-ticks"><span>0</span><span>50</span><span>100</span></div><div class="gauge-value">${score === null ? "—" : score}<small>${score === null ? "SEM VERIFICAÇÃO" : "ÍNDICE"}</small></div><div class="gauge-needle" style="transform: rotate(${score === null ? -90 : -90 + score * 1.8}deg)"></div></div><div class="tm-now"><span class="pulse"></span><b>${active ? escapeHtml(active.status) : "AGUARDANDO"}</b> · ${active ? escapeHtml(active.text.slice(0, 64)) : "Aguardando legenda do YouTube"}</div></main>
           <aside class="tm-speaker speaker-right"><div class="speaker-label"><span>SEM ATRIBUIÇÃO</span><span class="avatar avatar-blue">?</span></div><div class="big-count gray">${unknownCount}<small>AGUARDANDO ANÁLISE</small></div><div class="small-count gray">Nenhuma classificação factual</div></aside>
         </div>
         ${selected ? `<div class="tm-detail"><div class="detail-head"><div><span class="tm-kicker">LEGENDA CAPTURADA</span><h2>${escapeHtml(selected.text)}</h2></div><span class="status unknown">NÃO VERIFICADA</span></div><div class="detail-meta"><span>◷ ${formatTime(selected.start)}</span><span>◉ Participante não identificado</span><span>Sem pontuação</span></div><blockquote>“${escapeHtml(selected.quote)}”</blockquote><p class="reason">${escapeHtml(selected.reason)}</p><div class="evidence-box"><strong>Origem</strong><p>${escapeHtml(selected.evidence)}</p><span class="muted">A etapa de checagem ainda não foi executada.</span></div><div class="review-row"><button data-action="next" class="secondary-btn">Próxima legenda →</button></div></div>` : ""}
