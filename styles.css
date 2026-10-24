@@ -83,6 +83,8 @@
 .score-row span { font-size: 9px; font-weight: 800; letter-spacing: .08em; }
 .score-false strong, .score-false span { color: #ff657c; }
 .score-true strong, .score-true span { color: #65c5ff; }
+.speaker-index { margin-top: 9px; color: #9db1c5; font-size: 9px; letter-spacing: .08em; }
+.speaker-index b { margin-left: 4px; color: #f4f8fc; font-size: 13px; }
 .small-count { margin-top: 7px; font-size: 10px; }
 .red { color: #ff657c; }
 .blue { color: #65c5ff; }

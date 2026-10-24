@@ -36,6 +36,21 @@
   const statusClass = (status) => ({ CORROBORADA: "good", CONTRADITA: "bad", PARCIAL: "partial", INDETERMINADA: "unknown" }[status] || "unknown");
   const selectedClaim = () => claims.find((claim) => claim.id === state.selected) || claims[claims.length - 1] || null;
   const pointsFor = (speakerKey, status) => claims.filter((claim) => claim.speakerKey === speakerKey && claim.status === status).length;
+  function scoreFor(speakerKey = null) {
+    const verified = claims.filter((claim) => {
+      const belongs = speakerKey ? claim.speakerKey === speakerKey : (claim.speakerKey === "p1" || claim.speakerKey === "p2");
+      return belongs && (claim.status === "CORROBORADA" || claim.status === "CONTRADITA");
+    }).slice(-10);
+    if (!verified.length) return null;
+    let total = 0;
+    let weightTotal = 0;
+    verified.forEach((claim, index) => {
+      const weight = index + 1;
+      total += (claim.status === "CORROBORADA" ? 100 : 0) * weight;
+      weightTotal += weight;
+    });
+    return Math.round(total / weightTotal);
+  }
 
   function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -114,12 +129,15 @@
     const selected = selectedClaim();
     const current = video()?.currentTime || 0;
     const active = claims.find((claim) => current >= claim.start && current <= claim.end + 2) || selected;
-    const verified = claims.filter((claim) => claim.score !== null && (claim.status === "CORROBORADA" || claim.status === "CONTRADITA"));
-    const score = verified.length ? Math.round(verified.reduce((sum, claim) => sum + claim.score, 0) / verified.length) : null;
+    const focusKey = active?.speakerKey === "p1" || active?.speakerKey === "p2" ? active.speakerKey : null;
+    const score = scoreFor(focusKey) ?? scoreFor();
+    const focusLabel = focusKey === "p1" ? "LULA" : focusKey === "p2" ? "FLÁVIO" : "GERAL";
     const lulaFalse = pointsFor("p1", "CONTRADITA");
     const lulaTrue = pointsFor("p1", "CORROBORADA");
     const flavioFalse = pointsFor("p2", "CONTRADITA");
     const flavioTrue = pointsFor("p2", "CORROBORADA");
+    const lulaScore = scoreFor("p1");
+    const flavioScore = scoreFor("p2");
 
     root.innerHTML = `
       <div class="tm-launcher" data-action="toggle-open" title="Abrir TruthMeter">TM</div>
@@ -131,9 +149,9 @@
         </header>
         ${state.minimized ? `<div class="tm-minimized-bar"><span>${state.analysis ? "Análise ativa" : "Análise pausada"}</span><button data-action="expand">Expandir painel</button></div>` : `
         <div class="tm-body">
-          <aside class="tm-speaker speaker-left"><div class="speaker-label"><span class="avatar avatar-red">L</span><span>LULA</span></div><div class="score-row"><div class="score-false"><strong>${lulaFalse}</strong><span>FALSO</span></div><div class="score-true"><strong>${lulaTrue}</strong><span>VERDADE</span></div></div><div class="small-count gray">Pontos após análise</div></aside>
-          <main class="tm-center"><div class="tm-kicker">ANÁLISE EM ANDAMENTO</div><div class="gauge"><div class="gauge-arc"></div><div class="gauge-ticks"><span>0</span><span>50</span><span>100</span></div><div class="gauge-value">${score === null ? "—" : score}<small>${score === null ? "SEM RESULTADO" : "ÍNDICE"}</small></div><div class="gauge-needle" style="transform: rotate(${score === null ? -90 : -90 + score * 1.8}deg)"></div></div></main>
-          <aside class="tm-speaker speaker-right"><div class="speaker-label"><span>FLÁVIO</span><span class="avatar avatar-blue">F</span></div><div class="score-row"><div class="score-false"><strong>${flavioFalse}</strong><span>FALSO</span></div><div class="score-true"><strong>${flavioTrue}</strong><span>VERDADE</span></div></div><div class="small-count gray">Pontos após análise</div></aside>
+          <aside class="tm-speaker speaker-left"><div class="speaker-label"><span class="avatar avatar-red">L</span><span>LULA</span></div><div class="score-row"><div class="score-false"><strong>${lulaFalse}</strong><span>FALSO</span></div><div class="score-true"><strong>${lulaTrue}</strong><span>VERDADE</span></div></div><div class="speaker-index">ÍNDICE <b>${lulaScore === null ? "—" : lulaScore}</b></div></aside>
+          <main class="tm-center"><div class="tm-kicker">${focusLabel} · ÍNDICE PROGRESSIVO</div><div class="gauge"><div class="gauge-arc"></div><div class="gauge-ticks"><span>0</span><span>50</span><span>100</span></div><div class="gauge-value">${score === null ? "—" : score}<small>${score === null ? "SEM RESULTADO" : "VERDADE"}</small></div><div class="gauge-needle" style="transform: rotate(${score === null ? -90 : -90 + score * 1.8}deg)"></div></div></main>
+          <aside class="tm-speaker speaker-right"><div class="speaker-label"><span>FLÁVIO</span><span class="avatar avatar-blue">F</span></div><div class="score-row"><div class="score-false"><strong>${flavioFalse}</strong><span>FALSO</span></div><div class="score-true"><strong>${flavioTrue}</strong><span>VERDADE</span></div></div><div class="speaker-index">ÍNDICE <b>${flavioScore === null ? "—" : flavioScore}</b></div></aside>
         </div>
         ${selected ? `<div class="tm-detail"><div class="detail-head"><div><span class="tm-kicker">LEGENDA CAPTURADA</span><h2>${escapeHtml(selected.text)}</h2></div><span class="status unknown">NÃO VERIFICADA</span></div><div class="detail-meta"><span>◷ ${formatTime(selected.start)}</span><span>◉ Participante não identificado</span><span>Sem pontuação</span></div><blockquote>“${escapeHtml(selected.quote)}”</blockquote><p class="reason">${escapeHtml(selected.reason)}</p><div class="evidence-box"><strong>Origem</strong><p>${escapeHtml(selected.evidence)}</p><span class="muted">A etapa de checagem ainda não foi executada.</span></div><div class="review-row"><button data-action="next" class="secondary-btn">Próxima legenda →</button></div></div>` : ""}
         <div class="tm-timeline"><div class="timeline-title"><span>LEGENDAS CAPTURADAS</span><span class="muted">Clique para navegar</span></div><div class="claim-list">${claims.map((claim) => `<button data-action="select" data-id="${claim.id}" class="claim-row ${claim.id === state.selected ? "selected" : ""}"><span class="timeline-time">${formatTime(claim.start)}</span><span class="claim-speaker unknown">?</span><span class="claim-text">${escapeHtml(claim.text)}</span><span class="status-dot unknown"></span></button>`).join("")}</div></div>
