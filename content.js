@@ -35,6 +35,7 @@
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" })[char]);
   const statusClass = (status) => ({ CORROBORADA: "good", CONTRADITA: "bad", PARCIAL: "partial", INDETERMINADA: "unknown" }[status] || "unknown");
   const selectedClaim = () => claims.find((claim) => claim.id === state.selected) || claims[claims.length - 1] || null;
+  const pointsFor = (speakerKey, status) => claims.filter((claim) => claim.speakerKey === speakerKey && claim.status === status).length;
 
   function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -91,8 +92,10 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const result = await response.json();
       if (!claims.includes(claim)) return;
-      claim.status = result.classification || "INDETERMINADA";
+      claim.status = result.classification === "CORRETA" ? "CORROBORADA" : result.classification === "FALSA" ? "CONTRADITA" : (result.classification || "INDETERMINADA");
       claim.score = Number.isInteger(result.score) ? result.score : null;
+      claim.speaker = result.speaker === "lula" ? "Lula" : result.speaker === "flavio" ? "Flávio" : "Desconhecido";
+      claim.speakerKey = result.speaker === "lula" ? "p1" : result.speaker === "flavio" ? "p2" : "unknown";
       claim.text = result.claim || claim.text;
       claim.quote = claim.text;
       claim.evidence = result.evidence || "Nenhuma evidência suficiente retornada.";
@@ -111,9 +114,12 @@
     const selected = selectedClaim();
     const current = video()?.currentTime || 0;
     const active = claims.find((claim) => current >= claim.start && current <= claim.end + 2) || selected;
-    const verified = claims.filter((claim) => claim.score !== null);
+    const verified = claims.filter((claim) => claim.score !== null && (claim.status === "CORROBORADA" || claim.status === "CONTRADITA"));
     const score = verified.length ? Math.round(verified.reduce((sum, claim) => sum + claim.score, 0) / verified.length) : null;
-    const unknownCount = claims.length;
+    const lulaFalse = pointsFor("p1", "CONTRADITA");
+    const lulaTrue = pointsFor("p1", "CORROBORADA");
+    const flavioFalse = pointsFor("p2", "CONTRADITA");
+    const flavioTrue = pointsFor("p2", "CORROBORADA");
 
     root.innerHTML = `
       <div class="tm-launcher" data-action="toggle-open" title="Abrir TruthMeter">TM</div>
@@ -123,11 +129,11 @@
           <div class="tm-brand"><span class="tm-dot"></span><div><strong>TRUTHMETER</strong><small>legendas reais do YouTube</small></div></div>
           <div class="tm-header-actions"><span class="tm-live"><i></i>${state.analysis ? "Capturando legenda" : "Pausada"}</span><button data-action="toggle-analysis" class="tm-icon">${state.analysis ? "Ⅱ" : "▶"}</button><button data-action="minimize" class="tm-icon">—</button><button data-action="close" class="tm-icon">×</button></div>
         </header>
-        ${state.minimized ? `<div class="tm-minimized-bar"><span>${claims.length ? `${claims.length} legendas` : "Aguardando legenda"}</span><button data-action="expand">Expandir painel</button></div>` : `
+        ${state.minimized ? `<div class="tm-minimized-bar"><span>${state.analysis ? "Análise ativa" : "Análise pausada"}</span><button data-action="expand">Expandir painel</button></div>` : `
         <div class="tm-body">
-          <aside class="tm-speaker speaker-left"><div class="speaker-label"><span class="avatar avatar-red">?</span><span>PARTICIPANTE</span></div><div class="big-count gray">—<small>SEM ATRIBUIÇÃO</small></div><div class="small-count gray">A voz ainda não foi identificada</div></aside>
-          <main class="tm-center"><div class="tm-kicker">${state.mode} · ${claims.length} capturadas</div><div class="gauge"><div class="gauge-arc"></div><div class="gauge-ticks"><span>0</span><span>50</span><span>100</span></div><div class="gauge-value">${score === null ? "—" : score}<small>${score === null ? "SEM VERIFICAÇÃO" : "ÍNDICE"}</small></div><div class="gauge-needle" style="transform: rotate(${score === null ? -90 : -90 + score * 1.8}deg)"></div></div><div class="tm-now"><span class="pulse"></span><b>${active ? escapeHtml(active.status) : "AGUARDANDO"}</b> · ${active ? escapeHtml(active.text.slice(0, 64)) : "Aguardando legenda do YouTube"}</div></main>
-          <aside class="tm-speaker speaker-right"><div class="speaker-label"><span>SEM ATRIBUIÇÃO</span><span class="avatar avatar-blue">?</span></div><div class="big-count gray">${unknownCount}<small>AGUARDANDO ANÁLISE</small></div><div class="small-count gray">Nenhuma classificação factual</div></aside>
+          <aside class="tm-speaker speaker-left"><div class="speaker-label"><span class="avatar avatar-red">L</span><span>LULA</span></div><div class="score-row"><div class="score-false"><strong>${lulaFalse}</strong><span>FALSO</span></div><div class="score-true"><strong>${lulaTrue}</strong><span>VERDADE</span></div></div><div class="small-count gray">Pontos após análise</div></aside>
+          <main class="tm-center"><div class="tm-kicker">ANÁLISE EM ANDAMENTO</div><div class="gauge"><div class="gauge-arc"></div><div class="gauge-ticks"><span>0</span><span>50</span><span>100</span></div><div class="gauge-value">${score === null ? "—" : score}<small>${score === null ? "SEM RESULTADO" : "ÍNDICE"}</small></div><div class="gauge-needle" style="transform: rotate(${score === null ? -90 : -90 + score * 1.8}deg)"></div></div></main>
+          <aside class="tm-speaker speaker-right"><div class="speaker-label"><span>FLÁVIO</span><span class="avatar avatar-blue">F</span></div><div class="score-row"><div class="score-false"><strong>${flavioFalse}</strong><span>FALSO</span></div><div class="score-true"><strong>${flavioTrue}</strong><span>VERDADE</span></div></div><div class="small-count gray">Pontos após análise</div></aside>
         </div>
         ${selected ? `<div class="tm-detail"><div class="detail-head"><div><span class="tm-kicker">LEGENDA CAPTURADA</span><h2>${escapeHtml(selected.text)}</h2></div><span class="status unknown">NÃO VERIFICADA</span></div><div class="detail-meta"><span>◷ ${formatTime(selected.start)}</span><span>◉ Participante não identificado</span><span>Sem pontuação</span></div><blockquote>“${escapeHtml(selected.quote)}”</blockquote><p class="reason">${escapeHtml(selected.reason)}</p><div class="evidence-box"><strong>Origem</strong><p>${escapeHtml(selected.evidence)}</p><span class="muted">A etapa de checagem ainda não foi executada.</span></div><div class="review-row"><button data-action="next" class="secondary-btn">Próxima legenda →</button></div></div>` : ""}
         <div class="tm-timeline"><div class="timeline-title"><span>LEGENDAS CAPTURADAS</span><span class="muted">Clique para navegar</span></div><div class="claim-list">${claims.map((claim) => `<button data-action="select" data-id="${claim.id}" class="claim-row ${claim.id === state.selected ? "selected" : ""}"><span class="timeline-time">${formatTime(claim.start)}</span><span class="claim-speaker unknown">?</span><span class="claim-text">${escapeHtml(claim.text)}</span><span class="status-dot unknown"></span></button>`).join("")}</div></div>
